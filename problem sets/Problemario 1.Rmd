@@ -97,7 +97,7 @@ pacman::p_load(
   stargazer
 )
 
-smoking <- haven::read_dta("C:/Users/L03533611/Downloads/Tarea 1 (mis partes)/smoking2.dta")
+smoking <- haven::read_dta("https://github.com/marcomna/econometricsDPP/raw/refs/heads/main/data/smoking2.dta")
 ```
 
 # Part 4 (30 points)
@@ -239,7 +239,7 @@ Además, estos controles pueden ser endógenos, ya que están influenciados por 
 These questions ask you to analyze a data set with information that was collected as part of the randomized evaluation of the US Federal Job Corps Program. Before getting started, read the description of the program in Schochet, Peter, John Burghardt and Sheena McConnell. 2008. "Does Job Corps Work? Impact Findings from the National Job Corps Study." American Economic Review, 98(5).  The data set is called jobcorps.dta and is located in Canvas 
 
 ```{r, include=FALSE, echo=FALSE}
-jobs <- read_dta("C:/Users/L03533611/Downloads/Tarea 1 (mis partes)/jobcorps.dta")
+jobs <- read_dta("https://github.com/marcomna/econometricsDPP/raw/refs/heads/main/data/jobcorps.dta")
 str(jobs)
 ```
 
