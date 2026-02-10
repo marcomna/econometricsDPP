@@ -469,3 +469,13 @@ cat("Tasa de missing en earnq1:", mean(jobs$miss_earnq1, na.rm = TRUE), "\n")
 ```
 
 La falta de datos en la variable clave constituye un problema serio de selección no aleatoria, ya que, aunque no existe evidencia de un patrón diferencial por asignación al tratamiento (p=0.125), las características observables del baseline predicen de manera conjunta y altamente significativa la probabilidad de tener datos faltantes. Específicamente, variables como el género masculino, el salario previo y la asistencia social están fuertemente correlacionadas con la ausencia de información, lo que sugiere que el mecanismo de pérdida de datos no es aleatorio y podría sesgar las estimaciones del impacto experimental. Creemos que se deben generar técnicas de imputación o de IPW para robustecer los resultados.
+
+# Declaración de uso de IA (ChatGPT)
+
+Para la elaboración de este Problem Set se utilizó IA generativa (ChatGPT) como apoyo para:
+(i) verificar derivaciones y resultados, (ii) depurar/organizar código en R, y (iii) mejorar redacción y claridad.
+Las conversaciones y prompts utilizados se incluyen como evidencia en el Anexo 1.
+
+# Anexo 1. Evidencias de conversaciones con ChatGPT
+
+
