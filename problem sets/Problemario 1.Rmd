@@ -1,0 +1,471 @@
+---
+title: "Problem Set 1"
+author: "José Manuel Muñoz Carrillo A01595143, Marco Méndez Atienza A01330601"
+date: ""
+output: pdf_document
+---
+
+# Part 1 (20 points)
+
+## 1) Problema de minimización
+
+- Dado que el modelo es $y_i = \alpha + \varepsilon_i$, entonces los residuales son $\varepsilon_i = y_i - \alpha$. Elevando al cuadrado y obteniendo su suma:
+
+$$
+SSR = \sum_{i=1}^{n} (y_i - \alpha)^2
+\quad \text{donde SSR: sum of squared residuals}
+$$
+
+- Por lo que el objetivo es:
+
+$$
+\min_{\alpha} \sum_{i=1}^{n} (y_i - \alpha)^2
+$$
+
+## 2) Resolver para $\hat{\alpha}$
+
+- Condición de 1er orden:
+
+$$
+\frac{d}{d\alpha}\sum_{i=1}^{n}(y_i-\alpha)^2 = 0
+$$
+
+$$
+\Rightarrow \sum_{i=1}^{n}2(y_i-\alpha)(-1)=0
+$$
+
+$$
+\Rightarrow \sum_{i=1}^{n}(y_i-\alpha)=0
+$$
+
+$$
+\Rightarrow \sum_{i=1}^{n}y_i-\sum_{i=1}^{n}\alpha=0
+$$
+
+$$
+\Rightarrow \sum_{i=1}^{n}y_i-n\alpha=0
+$$
+
+- Se resuelve para el estimador de $\alpha$, $\hat{\alpha}$:
+
+$$
+n\hat{\alpha}=\sum_{i=1}^{n}y_i
+$$
+
+$$
+\therefore \hat{\alpha}=\frac{1}{n}\sum_{i=1}^{n}y_i=\bar{y}
+$$
+
+- Este resultado indica que si nuestra variable de interés $y$ solo está determinada por una constante + ruido aleatorio, la MEJOR predicción que minimiza los residuales es solamente el promedio de los datos observados.
+
+# Part 2 (10 points)
+
+1) Falso: Si bien las regresiones por MCO pueden incluir muchos controles, no "arregla" la maldición de la dimensionalidad, sino que lo evita con el supuesto de que la relación entre variables es lineal. Pero si este supuesto es incorrecto, los estimadores estarían sesgados aunque se cumpla la no selección en no observables.
+
+2) Falso: El Efecto de Tratamiento a nivel individual se define como la diferencia en resultados potenciales $y_i(1) - y_i(0)$. El Average Treatment Effect (ATE), por su parte, sí identifica la diferencia en resultados promedio entre grupo control y tratamiento
+
+3) Verdadero
+
+4) Falso: El Teorema del Límite Central (TLC) establece que, mientras el tamaño de muestra crece, la media muestral converge APROXIMADAMENTE a una distribución normal
+
+5) Verdadero
+
+# Part 3 (10 points)
+
+a) El coeficiente $\hat{\beta}_1 = -2.0$ representa que, en promedio, las mujeres ganan $2 menos que los hombres, que son el grupo base
+
+b) Lo más probable es que no haya selection on observables. Esto porque aunque estamos observando la educación, existen factores no observados (por ejemplo, experiencia laboral, tipo de industrias, habilidades de cada persona) que afectan el salario y también están correlacionados con género; esto introducirá sesgos en las estimaciones
+
+c) Al agregar educación, probablemente disminuya el error estándar, dado que la educación seguramente explica en gran medida el salario -> lo que reduce la varianza $\sigma^2$ del modelo. El SE podría subir solo si la educación está muy correlacionada con género (que sería además un problema de multicolinealidad).
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+pacman::p_load(
+  haven,
+  dplyr,
+  tidyr,
+  ggplot2,
+  broom,
+  car,
+  lmtest,
+  sandwich,
+  knitr,
+  kableExtra,
+  stargazer
+)
+
+smoking <- haven::read_dta("C:/Users/L03533611/Downloads/Tarea 1 (mis partes)/smoking2.dta")
+```
+
+# Part 4 (30 points)
+
+For this section questions use the dataset smoking2.dta (available on Canvas). This is a dataset comprised of birth certificate records. It contains information on infant health, demographic characteristics of the parents, pre-natal care use, and health risks factors.
+
+### 1. Suppose your goal was to determine the impact of smoking during pregnancy on a measure of infant health, birthweight. 
+
+#### a. Compare the average birthweight (i.e. dbirwt) of children born to smokers and non-smokers (i.e. tobacco). Is the mean difference "significant" in a statistical sense?
+
+```{r, echo=FALSE}
+smoking %>%
+  group_by(tobacco) %>%
+  summarise(
+    n = n(),
+    mean_birthweight = mean(dbirwt, na.rm = TRUE),
+    sd_birthweight = sd(dbirwt, na.rm = TRUE)
+  )
+
+t.test(dbirwt ~ tobacco, data = smoking)
+```
+La diferencia de medias es estadísticamente significativa. Los resultados muestran que los hijos de madres no fumadoras (grupo 0) tienen un peso promedio al nacer de 3,425.56 gramos, mientras que los hijos de madres fumadoras (grupo 1) promedian 3,167.98 gramos.
+
+Existe una diferencia de aproximadamente 257.57 gramos en en los hijos de fumadoras. El valor p es menor a 0.05, lo que nos permite rechazar la hipótesis nula de igualdad de medias con un nivel de confianza superior al 95%. El intervalo de confianza del 95% para la diferencia (entre 249.75 y 265.39 gramos) no incluye el cero, lo que confirma la significancia estadística.
+
+#### b.	Test for "selection on observables". Remember to check whether both conditions of selection on observables are met. What does this suggest about the results from (a) being a valid causal estimate of the effect of smoking on birthweight?
+
+```{r, echo=FALSE}
+covariates <- c("dmage", "dmeduc", "dmar", "dlivord", "nprevist", "disllb", 
+                "dfage", "dfeduc", "anemia", "diabete", "phyper", "pre4000", 
+                "preterm", "alcohol", "drink", "foreignb", "plural", 
+                "mblack", "motherr", "mhispan", "fblack", "fotherr", "fhispan")
+
+balance_tests <- lapply(covariates, function(var) {
+  formula <- as.formula(paste(var, "~ tobacco"))
+  test <- t.test(formula, data = smoking)
+  data.frame(
+    variable = var,
+    mean_nonsmoker = test$estimate[1],
+    mean_smoker = test$estimate[2],
+    difference = test$estimate[1] - test$estimate[2],
+    p_value = test$p.value,
+    significant = ifelse(test$p.value < 0.05, "Yes", "No")
+  )
+})
+
+balance_table <- do.call(rbind, balance_tests)
+balance_table
+```
+
+Sí existe sesgo de selección. La tabla muestra que 22 de 23 variables observables presentan diferencias estadísticamente significativas (p < 0.05) entre fumadoras y no fumadoras, violando el supuesto de independencia condicional necesario para identificación causal. Las fumadoras son sistemáticamente diferentes: más jóvenes (25.4 vs 27.2 años), menos educadas (11.9 vs 13.1 años), menos casadas (41% vs 18%), con menor uso de cuidado prenatal (10.3 vs 11.2 visitas), y mayor consumo de alcohol (5.2% vs 0.9%) entre otras.
+
+#### c. Based on your tests in (b), briefly describe the socioeconomic status of smokers compared to non-smokers (i.e. these include variables: tobacco,dmage,dmeduc,dmar, dlivord,nprevist,disllb,dfage,dfeduc,anemia,diabete,phyper , pre4000,preterm,alcohol, drink,foreignb,plural,deadkids,mblack,motherr, mhispan,fblack,fotherr,fhispan).
+
+```{r, echo=FALSE}
+ses_vars <- c("dmage", "dmeduc", "dmar", "dfage", "dfeduc", "foreignb",
+              "mblack", "motherr", "mhispan", "fblack", "fotherr", "fhispan")
+
+ses_comparison <- smoking %>%
+  group_by(tobacco) %>%
+  summarise(
+    age_mother = mean(dmage, na.rm = TRUE),
+    educ_mother = mean(dmeduc, na.rm = TRUE),
+    married = mean(dmar, na.rm = TRUE),
+    age_father = mean(dfage, na.rm = TRUE),
+    educ_father = mean(dfeduc, na.rm = TRUE),
+    foreign_born = mean(foreignb, na.rm = TRUE),
+    mother_black = mean(mblack, na.rm = TRUE),
+    mother_hispanic = mean(mhispan, na.rm = TRUE),
+    father_black = mean(fblack, na.rm = TRUE),
+    father_hispanic = mean(fhispan, na.rm = TRUE)
+  )
+
+ses_comparison
+```
+Las madres fumadoras presentan un estatus socioeconómico sistemáticamente más vulnerable en comparación con las no fumadoras. En términos de capital humano, las fumadoras tienen, en promedio, un año menos de educación (11.87 vs 13.12) y son más jóvenes (25.37 vs 27.23 años). Estructuralmente, las fumadoras tienen una probabilidad mucho mayor de no estar casadas (41.3% vs 18%). Además, el tabaquismo es más prevalente en madres afroamericanas (13.9% vs 10.9%) y menos frecuente en madres nacidas en el extranjero o de origen hispano. El perfil de la madre fumadora en esta muestra está asociado a indicadores de menor acumulación de recursos, mayor juventud y menor estabilidad social y económica, factores que por sí mismos correlacionan negativamente con la salud neonatal y  proxy que estamos usando de peso.
+
+#### d. Given the available information in the dataset, do you think "selection on unobservables" may pose a problem (HINT: use the residuals() function )?
+
+```{r, echo=FALSE}
+m0 <- lm(
+  dbirwt ~ dmage + dmeduc + dmar + dlivord + nprevist + disllb +
+    dfage + dfeduc + anemia + diabete + phyper + pre4000 + preterm +
+    alcohol + drink + foreignb + plural +
+    mblack + motherr + mhispan + fblack + fotherr + fhispan,
+  data = smoking
+)
+
+smoking$u_hat <- residuals(m0)
+
+t.test(u_hat ~ tobacco, data = smoking)
+
+summary(lm(u_hat ~ tobacco, data = smoking))
+```
+Sí. Aunque controlemos por variables observables, los residuales del peso al nacer difieren significativamente entre fumadoras y no fumadoras, lo que implica que tobacco está correlacionado con factores no observados que afectan el outcome. Esto es evidencia clara de selección en no observables, por lo que la diferencia de medias y el OLS ajustado no pueden interpretarse como efectos causales sin una estrategia adicional de identificación.
+
+### 2. Now see if the estimated "effect" of smoking is affected by controlling for observable characteristics in an OLS regression. This procedure is known as "regression adjusting" the difference in means. (25 points)
+
+#### a. First, control for a limited set of demographic characteristics such as race and age. What happens to the coefficient on the smoking indicator variable?
+
+```{r}
+model_1 <- lm(dbirwt ~ tobacco, data = smoking)
+summary(model_1)
+
+model_2a <- lm(dbirwt ~ tobacco + dmage + dfage + 
+                 mblack + motherr + mhispan + fblack + fotherr + fhispan, 
+               data = smoking)
+summary(model_2a)
+```
+Al controlar por edad y raza de los padres, el coeficiente de tobacco se reduce de -257.6 gramos a -244.5 gramos (aprox. 5%), manteniendo alta la significancia estadística (p<2e-16). Esto nos indica que una pequeña fracción de la diferencia bruta en el peso al nacer se debe a la composición demográfica, pero la persistencia de un efecto de gran magnitud sugiere que el tabaco sigue capturando el impacto de otros confusores omitidos (educación, factores de riesgo, etc.) o que posee un efecto biológico independiente. El incremento del R2 de 0.030 a 0.062 confirma que estas variables demográficas explican variación adicional, aunque la mayor parte del peso al nacer sigue sin ser explicada por este modelo sencillo.
+
+#### b. Now include other controls for other characteristics such as education, prenatal care utilization, and other behavioral risk factors like alcohol consumption. What happens to the "effect" of smoking? What does the p-values indicate with respect to the hypothesis that the coefficients on all of the covariates you just added are zero.
+
+```{r}
+model_2b <- lm(dbirwt ~ tobacco + dmage + dfage + 
+                 mblack + motherr + mhispan + fblack + fotherr + fhispan +
+                 dmeduc + dfeduc + dmar + nprevist + 
+                 alcohol + drink, 
+               data = smoking)
+summary(model_2b)
+
+linearHypothesis(model_2b, 
+                 c("dmeduc = 0", "dfeduc = 0", "dmar = 0", 
+                   "nprevist = 0", "alcohol = 0", "drink = 0"))
+```
+
+#### c.	Finally, include controls for other medical risk factors such as the mother's hypertension. What happens to the effect of smoking?
+
+Al incorporar controles adicionales de educación, estado civil, uso de cuidado prenatal y conductas de riesgo, el coeficiente de tobacco se reduce de -244.5 gramos a -216.6 gramos, lo que indica que una parte relevante del efecto estimado previamente estaba capturando diferencias socioeconómicas y de comportamiento entre fumadoras y no fumadoras. Aun así, el efecto del tabaco sigue siendo grande y altamente significativo, lo que sugiere que fumar durante el embarazo está fuertemente asociado con menores pesos al nacer, incluso después de un ajuste sustancial por observables. El test F conjunto rechaza la hipótesis nula de que los coeficientes de las nuevas covariables sean cero, confirmando que educación, cuidado prenatal y consumo de alcohol explican de manera conjunta una fracción importante de la variación en el peso al nacer,
+
+#### d.BRIEFLY explain why adding these controls may be inappropriate.
+
+Aunque el control por educación, estado civil, uso de cuidado prenatal y conductas de riesgo reduce el coeficiente estimado de tobacco, la inclusión de estas variables puede ser inapropiada porque variables como el número de visitas prenatales y el consumo de alcohol pueden ser "canales" del efecto del tabaquismo. Si la madre fuma durante el embarazo puede afectar el comportamiento de cuidado de la madre o su estado de salud, y controlar por estas variables elimina parte del mecanismo a través del cual el tabaco impacta el peso al nacer, llevando a una subestimación del efecto.
+
+Además, estos controles pueden ser endógenos, ya que están influenciados por factores no observados como acceso,preferencias por la salud, estrés o desventajas socioeconómicas no observadas en las variables que tenemos y también afectan el peso al nacer. Al condicionar en variables determinadas simultáneamente o posteriormente al tratamiento, el modelo puede introducir sesgos adicionales en lugar de corregirlos.
+
+# Part 5 (30 points)
+
+These questions ask you to analyze a data set with information that was collected as part of the randomized evaluation of the US Federal Job Corps Program. Before getting started, read the description of the program in Schochet, Peter, John Burghardt and Sheena McConnell. 2008. "Does Job Corps Work? Impact Findings from the National Job Corps Study." American Economic Review, 98(5).  The data set is called jobcorps.dta and is located in Canvas 
+
+```{r, include=FALSE, echo=FALSE}
+jobs <- read_dta("C:/Users/L03533611/Downloads/Tarea 1 (mis partes)/jobcorps.dta")
+str(jobs)
+```
+
+#### a. Assess the success of randomization. Using the t.test command, test whether the difference in the fraction male was different in the experimental (treatmnt==1) and control group (treatmnt==0). What does this suggest? 
+
+```{r}
+df_bal <- subset(jobs, !is.na(male) & !is.na(treatmnt))
+
+t.test(male ~ treatmnt, data = df_bal)
+
+with(df_bal, tapply(male, treatmnt, mean))
+```
+
+La aleatorización para la variable género fue desbalanceada porque existe una diferencia de 8.3 puntos porcentuales entre grupos y esta es estadísticamente significativa (p<0.01). Esto sugiere un sesgo de selección o que los hombres en el grupo de tratamiento tuvieron una mayor tasa de abandono (attrition) en el estudio.
+
+#### b. Conduct similar tests of the randomization using other variables [Hint: be careful about the observable characteristics that you analyze]
+
+```{r}
+vars_baseline <- c(
+  "white", "black", "hispanic", "eng_sec_language", "male",
+  "havekids_at_bline",
+  "educlevel_at_bline", "hsgrad_at_bline", "ged_at_bline",
+  "everwork_at_bline", "wrk_lyr_bline", "mos_wrk_lyr_bline", 
+  "earn_lyr_bline", "wage_bline",
+  "anywlfr_bline", "alcohol_bline", "arrest_bline", "jail_bline"
+)
+
+balance_test <- function(var, data) {
+  formula <- as.formula(paste(var, "~ treatmnt"))
+  test <- t.test(formula, data = data)
+  
+  data.frame(
+    variable = var,
+    mean_control = test$estimate[1],
+    mean_treatment = test$estimate[2],
+    diff = test$estimate[2] - test$estimate[1],
+    p_value = test$p.value,
+    significant = ifelse(test$p.value < 0.05, "***", "")
+  )
+}
+
+balance_results <- do.call(rbind, lapply(vars_baseline, balance_test, data = jobs))
+
+balance_results <- balance_results[order(balance_results$p_value), ]
+rownames(balance_results) <- NULL
+
+print(balance_results, digits = 4)
+
+```
+
+#### c. Another way to test the randomization is by seeing how closely the observable characteristics can predict whether someone is in the experimental group or the control group. One way to implement this test is by running the following regression: 
+
+```{r}
+X <- c("male", "white", "black", "hispanic", "eng_sec_language",
+       "havekids_at_bline", "educlevel_at_bline", "hsgrad_at_bline", 
+       "ged_at_bline", 
+       "mos_wrk_lyr_bline", "earn_lyr_bline", "wage_bline",
+       "anywlfr_bline", "alcohol_bline", "arrest_bline", "jail_bline")
+
+df <- jobs[, c("treatmnt", "dsgn_wgt", X)]
+df <- df[complete.cases(df), ]
+
+fml <- as.formula(paste("treatmnt ~", paste(X, collapse = " + ")))
+lpm_weighted <- lm(fml, data = df, weights = dsgn_wgt)
+
+summary(lpm_weighted)
+linearHypothesis(lpm_weighted, X)
+
+cat("\nObservaciones usadas:", nrow(df), "de", nrow(jobs), "\n")
+```
+
+$$
+\text{treatmnt}_i = \alpha + \mathbf{X}_i'\boldsymbol{\beta} + u_i
+$$
+
+donde $\mathbf{X}_i$ incluye características demográficas (género, raza/etnicidad, idioma), composición familiar, educación baseline, experiencia laboral previa, ingresos y salarios del año anterior, así como antecedentes de asistencia social, consumo de alcohol y problemas legales. La regresión se estima por mínimos cuadrados ponderados usando los pesos de diseño muestral (`dsgn_wgt`). Bajo aleatorización exitosa, $H_0: \boldsymbol{\beta} = \mathbf{0}$.
+
+#### d.What is your overall impression from these results? Was the randomization successful? [limit your discussion to about 3 sentences] 
+
+Los resultados indican que la aleatorización fue exitosa, ya que el modelo tiene un poder predictivo casi nulo (R2=0.0022) y la prueba F conjunta no es estadísticamente significativa (p=0.5794), lo que impide rechazar la hipótesis nula de que las covariables no predicen la asignación al tratamiento. A diferencia de los resultados no ponderados, al aplicar los pesos de diseño y corregir la muestra, las características observables están globalmente balanceadas entre los grupos. Esto sugiere que las diferencias individuales previas son producto del azar y que el grupo de tratamiento y control son comparables para la estimación del impacto causal.
+
+#### e. A serious problem that often arises during randomized evaluation is sample attrition. Compare the characteristics of individuals who drop out of the sample and those that complete the 48 month follow-up (attrit=0). Does it appear as though there is systematic attrition, or does it appear as though attrition is not systematically related to observables? 
+
+```{r}
+X <- c("male", "white", "black", "hispanic", "eng_sec_language",
+       "havekids_at_bline", "educlevel_at_bline", "hsgrad_at_bline", 
+       "ged_at_bline", "mos_wrk_lyr_bline", "earn_lyr_bline", "wage_bline",
+       "anywlfr_bline", "alcohol_bline", "arrest_bline", "jail_bline")
+
+fml_attrit <- as.formula(paste("attrit ~", paste(X, collapse = " + ")))
+lpm_attrit <- lm(fml_attrit, data = jobs)
+
+summary(lpm_attrit)
+linearHypothesis(lpm_attrit, X)
+```
+
+
+Si existe evidencia de abandono (attrition) sistemático. Las características baseline predicen de manera conjunta y significativa la probabilidad de abandono (F=7.79, p<0.001), y varias covariables individuales (male, anywlfr_bline, wage_bline y mos_wrk_lyr_bline) están estadísticamente asociadas con el abondano. Por lo tanto, attrition no es aleatoria con respecto a observables.
+
+#### f. Briefly (1-2 sentences) explain why attrition complicates estimation of experimental impacts, even with successful randomization. 
+
+El abandono (attrition) complica la estimación de impactos en RCT´s porque induce selección no aleatoria posterior a la asignación, rompiendo la equivalencia entre los grupos de tratamiento y control incluso si la aleatorización del principio fue exitosa. Cuando el abandono (attrition) está correlacionado con características observables o no observables que también afectan los resultados, el estimador de diferencia de medias deja de identificar el efecto causal del tratamiento.
+
+#### g. Propose a strategy for testing whether attrition is likely to pose a problem for this randomized evaluation.
+
+Una estrategia podría consistir en modelar el abandono (attrition) como función de características pre‑tratamiento y de la asignación al tratamiento, estimando
+
+$$
+attrition_i = \alpha + \delta \, treatment_i + X_i' \gamma + u_i
+$$
+
+
+y evaluando si (i) $\delta=0$ (abandono diferencial por tratamiento) y/o (ii) $X_i$ predice conjuntamente el abandono. 
+
+#### h. Implement your proposed test using the job corps data. Does it appear that attrition is a problem? 
+
+```{r}
+X <- c("male", "white", "black", "hispanic", "eng_sec_language",
+       "havekids_at_bline", "educlevel_at_bline", "hsgrad_at_bline",
+       "ged_at_bline", "mos_wrk_lyr_bline", "earn_lyr_bline", "wage_bline",
+       "anywlfr_bline", "alcohol_bline", "arrest_bline", "jail_bline")
+
+df <- jobs[, c("attrit", "treatmnt", "dsgn_wgt", X)]
+df <- df[complete.cases(df), ]
+df$attrit <- as.integer(df$attrit)  
+
+fml_attrit2 <- as.formula(paste("attrit ~ treatmnt +", paste(X, collapse = " + ")))
+m_attrit <- lm(fml_attrit2, data = df, weights = dsgn_wgt)
+
+summary(m_attrit)
+
+linearHypothesis(m_attrit, "treatmnt = 0")
+linearHypothesis(m_attrit, X)
+
+cat("\nObservaciones usadas:", nrow(df), "de", nrow(jobs), "\n")
+```
+
+#### i. For the rest of the questions, only use individuals who complete the 48 month follow-up. Use the subset() function to retain only the data points for which attrit==1. Estimate the experimental impact on earnings in the first quarter after random assignment and test whether the estimated impacts are statistically distinguishable from zero. 
+
+```{r}
+jobs48 <- subset(jobs, attrit == 0)
+
+tt_earnq1 <- t.test(earnq1 ~ treatmnt, data = jobs48)
+
+tt_earnq1
+
+impact_hat <- unname(diff(tt_earnq1$estimate))   
+pval <- tt_earnq1$p.value
+ci <- tt_earnq1$conf.int
+
+cat("Impacto estimado (earnq1):", impact_hat, "\n")
+cat("p-value:", pval, "\n")
+cat("IC 95%:", ci[1], ",", ci[2], "\n")
+```
+
+#### j. Given the structure of the Job Corps program, provide an explanation for this result. 
+
+En el primer trimestre tras la asignación aleatoria, los individuos del grupo de tratamiento suelen estar participando en capacitación intensiva (Job Corps), lo que reduce en su su tiempo disponible para trabajar en el mercado laboral. Por el contrario, los individuos del grupo control no reciben el programa y, por lo tanto, entran o permanecen en empleo inmediatamente, generando mayores ingresos en el corto plazo. Dado que earnq1 mide ingresos laborales muy tempranos y no el efecto de largo plazo del capital acumulado, el impacto negativo puede reflejar un efecto de sustitución temporal entre formación y trabajo, y no necesariamente un fracaso del programa.
+
+#### k. Now estimate the experimental impact on earnings in quarters 2-16 after random assignment. What does these result suggest about the time-profile of the effect of being in the Job Corps program? [It may be useful to plot the estimated effect as a function of time]
+
+```{r}
+jobs48 <- subset(jobs, attrit == 0)
+
+qs <- 2:16
+
+effects <- do.call(rbind, lapply(qs, function(q){
+  y <- paste0("earnq", q)
+  tt <- t.test(jobs48[[y]] ~ jobs48$treatmnt)
+
+  est_tc <- unname(tt$estimate["mean in group 1"] - tt$estimate["mean in group 0"])
+  ci_ct  <- tt$conf.int                    
+  ci_tc  <- c(-ci_ct[2], -ci_ct[1])        
+  
+  data.frame(
+    quarter = q,
+    effect = est_tc,
+    ci_low = ci_tc[1],
+    ci_high = ci_tc[2],
+    p_value = tt$p.value
+  )
+}))
+
+effects
+```
+
+```{r}
+ggplot(effects, aes(x = quarter, y = effect)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
+  geom_ribbon(aes(ymin = ci_low, ymax = ci_high), alpha = 0.2) +
+  geom_line(linewidth = 0.9) +
+  geom_point(size = 2) +
+  labs(
+    x = "Trimestre después de la asignación (q)",
+    y = "Impacto estimado en earnings: E[earnq] (tratamiento - control)",
+    title = "Perfil temporal del impacto de Job Corps sobre earnings (q2–q16)",
+    subtitle = "Muestra: completan follow-up 48 meses (attrit==0); IC 95% sombreado"
+  ) +
+  theme_minimal()
+```
+
+Si existe un efecto de inversión en capital humano caracterizado por un sesgo de selección negativo inicial debido al costo de oportunidad de la capacitación, seguido de una convergencia y posterior transición hacia impactos positivos y estadísticamente significativos a partir del décimo trimestre, lo que confirma retornos positivos al programa en el mediano plazo.
+
+#### l. Another serious problem in randomized evaluations is that key variables are, for some reason, missing. Using a similar strategy to that proposed in g, test whether missing data is likely to be a serious problem in the Jops Cops evaluation. 
+
+```{r}
+X <- c("male", "white", "black", "hispanic", "eng_sec_language",
+       "havekids_at_bline", "educlevel_at_bline", "hsgrad_at_bline",
+       "ged_at_bline", "mos_wrk_lyr_bline", "earn_lyr_bline", "wage_bline",
+       "anywlfr_bline", "alcohol_bline", "arrest_bline", "jail_bline")
+
+jobs$miss_earnq1 <- as.integer(is.na(jobs$earnq1))
+
+df <- jobs[, c("miss_earnq1", "treatmnt", "dsgn_wgt", X)]
+df <- df[complete.cases(df[, c("miss_earnq1", "treatmnt", "dsgn_wgt", X)]), ]
+
+fml_miss <- as.formula(paste("miss_earnq1 ~ treatmnt +", paste(X, collapse = " + ")))
+m_miss <- lm(fml_miss, data = df, weights = dsgn_wgt)
+
+summary(m_miss)
+
+linearHypothesis(m_miss, "treatmnt = 0")
+linearHypothesis(m_miss, X)
+
+cat("\nN usado:", nrow(df), "de", nrow(jobs), "\n")
+cat("Tasa de missing en earnq1:", mean(jobs$miss_earnq1, na.rm = TRUE), "\n")
+```
+
+La falta de datos en la variable clave constituye un problema serio de selección no aleatoria, ya que, aunque no existe evidencia de un patrón diferencial por asignación al tratamiento (p=0.125), las características observables del baseline predicen de manera conjunta y altamente significativa la probabilidad de tener datos faltantes. Específicamente, variables como el género masculino, el salario previo y la asistencia social están fuertemente correlacionadas con la ausencia de información, lo que sugiere que el mecanismo de pérdida de datos no es aleatorio y podría sesgar las estimaciones del impacto experimental. Creemos que se deben generar técnicas de imputación o de IPW para robustecer los resultados.
